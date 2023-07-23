@@ -1,6 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
+import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'oscilloscope.dart';
 
@@ -16,6 +20,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return new MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: "Oscilloscope Display Example",
       home: Shell(),
     );
@@ -58,139 +63,7 @@ class _ShellState extends State<Shell> {
     var result = await flutterTts.stop();
   }
 
-  List<double> data = [
-    3,
-    1,
-    0,
-    -2,
-    -2,
-    -3,
-    -4,
-    5,
-    -5,
-    -1,
-    0,
-    1,
-    0,
-    -4,
-    -1,
-    -1,
-    -1,
-    -8,
-    -12,
-    -2,
-    -50,
-    -114,
-    -145,
-    -122,
-    -116,
-    -120,
-    -70,
-    -60,
-    -28,
-    0,
-    -3,
-    0,
-    2,
-    1,
-    -10,
-    6,
-    40,
-    90,
-    11,
-    95,
-    99,
-    70,
-    60,
-    39,
-    23,
-    17,
-    0,
-    -8,
-    -4,
-    -5,
-    2,
-    -5,
-    -137,
-    -115,
-    -92,
-    -66,
-    -56,
-    -14,
-    0,
-    -1,
-    -7,
-    -6,
-    18,
-    52,
-    125,
-    116,
-    93,
-    74,
-    59,
-    63,
-    50,
-    37,
-    27,
-    14,
-    3,
-    -2,
-    -38,
-    -94,
-    -119,
-    -65,
-    -60,
-    -31,
-    -1,
-    -2,
-    -38,
-    -94,
-    -119,
-    -65,
-    -60,
-    -31,
-    -1,
-    -2,
-    0,
-    -2,
-    13,
-    32,
-    89,
-    119,
-    81,
-    62,
-    38,
-    36,
-    27,
-    18,
-    11,
-    2,
-    0,
-    -2,
-    3,
-    -3,
-    -2,
-    -40,
-    -85,
-    -102,
-    -108,
-    -97,
-    -98,
-    -66,
-    -63,
-    -64,
-    -56,
-    -58,
-    -44,
-    -19,
-    -4,
-    0,
-    -3,
-    -2,
-    4,
-    4,
-    11
-  ];
+  List<double> data = [];
   List<double> traceSine = [];
   List<double> traceCosine = [];
 
@@ -250,6 +123,8 @@ class _ShellState extends State<Shell> {
   //     return 0;
   // }
 
+
+
   double generate_ideal_signal(int step) {
     step = step % (t_i + t_e + 2 * t_r);
     if (step < t_i)
@@ -268,13 +143,40 @@ class _ShellState extends State<Shell> {
   Color _color = Colors.white;
   String _img_path = 'assets/images/rest.png';
 
+  bool _conn_status = false;
+  late BluetoothConnection connection;
+  listen_ble() async
+  {
+      if(_conn_status) {
+        try {
+          connection.input!.listen((Uint8List d) {
+            double v = double.parse(
+                ascii.decode(d).replaceAll(RegExp(r'[^0-9.\-]'), ''));
+            print('Data incoming : $v');
+            data.add(v);
+          }).onDone(() {
+            print('Disconnected by remote request');
+            });
+        }
+        catch (exception) {
+          print('Cannot connect, exception occured');
+          setState(() {
+            _conn_status = false;
+          });
+        }
+      }
+  }
   /// method to generate a Test  Wave Pattern Sets
   /// this gives us a value between +1  & -1 for sine & cosine
   _generateTrace(Timer t) {
     // generate our  values
     // var sv = sin((radians * pi));
-    var sv = data[i];
-    i = (i == data.length - 1) ? 0 : i + 1;
+    double sv = 0 ;
+    if(data.length>0){
+      // sv = data[0];
+      // data.removeAt(0);
+      sv = data.last;
+    }
     k += 1;
     setState(() {
       _currentP = sv;
@@ -344,7 +246,7 @@ class _ShellState extends State<Shell> {
     super.initState();
     restOscilloscope();
     initTts();
-  }
+ }
 
   @override
   void dispose() {
@@ -383,10 +285,10 @@ class _ShellState extends State<Shell> {
     // Generate the Scaffold
     return Scaffold(
       appBar: AppBar(
-        title: Text("Brepal Signal Processing"),
+        title: Text(_conn_status?"Brepal (Connected)":"Brepal(Disconnected)"),
         actions: [
           IconButton(
-              onPressed: () async {
+              onPressed: _conn_status? () async {
                 if (!_play) {
                   await _speak("are you ready.");
                   _timer = Timer.periodic(
@@ -398,9 +300,36 @@ class _ShellState extends State<Shell> {
                 setState(() {
                   _play = !_play;
                 });
-              },
+              }:null,
               icon: _play ? Icon(Icons.pause) : Icon(Icons.play_arrow)),
           IconButton(onPressed: showModal, icon: Icon(Icons.settings)),
+          IconButton(onPressed: () async{
+            if(_conn_status==false)
+              {
+                await Permission.bluetoothScan.request();
+                try {
+                  connection =
+                  await BluetoothConnection.toAddress('00:22:06:01:10:4E');
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cannoted', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),),backgroundColor: Colors.green,));
+                  setState(() {
+                    _conn_status = true;
+                  });
+                  listen_ble();
+                }
+                 catch (exception) {
+                  print('Cannot connect, exception occured');
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cannot connect, exception occured',style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),),backgroundColor: Colors.red,));
+                  setState(() {
+                    _conn_status = false;
+                  });
+                }
+              }
+            else{
+              setState(() {
+                _play = false;
+              });
+            }
+          }, icon: _conn_status?Icon(Icons.bluetooth): Icon(Icons.bluetooth_disabled))
         ],
       ),
       body: Column(
