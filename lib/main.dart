@@ -307,9 +307,17 @@ class _ShellState extends State<Shell> {
             if(_conn_status==false)
               {
                 await Permission.bluetoothScan.request();
+                await Permission.bluetoothConnect.request();
+                await Permission.bluetoothAdvertise.request();
+                // FlutterBluetoothSerial.instance.startDiscovery().listen((r) {
+                //   print('device');
+                //   print(r.device.address);
+                //   print(r.device.name);
+                // });
                 try {
                   connection =
                   await BluetoothConnection.toAddress('00:22:06:01:10:4E');
+                  print('ok');
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cannoted', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),),backgroundColor: Colors.green,));
                   setState(() {
                     _conn_status = true;
